@@ -3,6 +3,8 @@ module github.com/InseeFrLab/s3-operator
 go 1.19
 
 require (
+	github.com/minio/madmin-go/v3 v3.0.34
+	github.com/minio/minio-go/v7 v7.0.64
 	github.com/onsi/ginkgo/v2 v2.6.0
 	github.com/onsi/gomega v1.24.1
 	k8s.io/apimachinery v0.26.0

@@ -18,21 +18,24 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	s3v1alpha1 "github.com/inseefrlab/s3-operator/api/v1alpha1"
+	controllers "github.com/inseefrlab/s3-operator/controller"
+	"github.com/inseefrlab/s3-operator/controller/s3/factory"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	s3onyxiashv1alpha1 "github.com/InseeFrLab/s3-operator/api/v1alpha1"
-	"github.com/InseeFrLab/s3-operator/controllers"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -41,10 +44,23 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+// Implementing multi-value flag for custom CAs
+// See also : https://stackoverflow.com/a/28323276
+type ArrayFlags []string
+
+func (flags *ArrayFlags) String() string {
+	return fmt.Sprint(*flags)
+}
+
+func (flags *ArrayFlags) Set(value string) error {
+	*flags = append(*flags, value)
+	return nil
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(s3onyxiashv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(s3v1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -52,26 +68,54 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+
+	// S3 related variables
+	var s3EndpointUrl string
+	var accessKey string
+	var secretKey string
+	var region string
+	var s3Provider string
+	var useSsl bool
+	var caCertificatesBase64 ArrayFlags
+	var caCertificatesBundlePath string
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+
+	// S3 related flags
+	flag.StringVar(&s3Provider, "s3-provider", "minio", "S3 provider (possible values : minio, mockedS3Provider)")
+	flag.StringVar(&s3EndpointUrl, "s3-endpoint-url", "localhost:9000", "Hostname (or hostname:port) of the S3 server")
+	flag.StringVar(&accessKey, "s3-access-key", "ROOTNAME", "The accessKey of the acount")
+	flag.StringVar(&secretKey, "s3-secret-key", "CHANGEME123", "The secretKey of the acount")
+	flag.Var(&caCertificatesBase64, "s3-ca-certificate-base64", "(Optional) Base64 encoded, PEM format certificate file for a certificate authority, for https requests to S3")
+	flag.StringVar(&caCertificatesBundlePath, "s3-ca-certificate-bundle-path", "", "(Optional) Path to a CA certificate file, for https requests to S3")
+	flag.StringVar(&region, "region", "us-east-1", "The region to configure for the S3 client")
+	flag.BoolVar(&useSsl, "useSsl", true, "Use of SSL/TLS to connect to the S3 endpoint")
+
 	opts := zap.Options{
 		Development: true,
+		TimeEncoder: zapcore.ISO8601TimeEncoder,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// change due to upgrade version to 0.16.2 of sigs.k8s.io/controller-runtime
+	var serverOption = server.Options{
+		BindAddress: metricsAddr,
+	}
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Scheme:  scheme,
+		Metrics: serverOption,
+		// commented because option format change in ctrl.Options
+		//Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "524dc311.onyxia.sh",
+		LeaderElectionID:       "1402b7b1.onyxia.sh",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -89,25 +133,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	// For S3 access key and secret key, we first try to read the values from environment variables.
+	// Only if these are not defined do we use the respective flags.
+	var accessKeyFromEnvIfAvailable = os.Getenv("S3_ACCESS_KEY")
+	if accessKeyFromEnvIfAvailable == "" {
+		accessKeyFromEnvIfAvailable = accessKey
+	}
+	var secretKeyFromEnvIfAvailable = os.Getenv("S3_SECRET_KEY")
+	if secretKeyFromEnvIfAvailable == "" {
+		secretKeyFromEnvIfAvailable = secretKey
+	}
+
+	// Creation of the S3 client
+	s3Config := &factory.S3Config{S3Provider: s3Provider, S3UrlEndpoint: s3EndpointUrl, Region: region, AccessKey: accessKeyFromEnvIfAvailable, SecretKey: secretKeyFromEnvIfAvailable, UseSsl: useSsl, CaCertificatesBase64: caCertificatesBase64, CaBundlePath: caCertificatesBundlePath}
+	s3Client, err := factory.GetS3Client(s3Config.S3Provider, s3Config)
+	if err != nil {
+		// setupLog.Log.Error(err, err.Error())
+		// fmt.Print(s3Client)
+		// fmt.Print(err)
+		setupLog.Error(err, "an error occurred while creating the S3 client", "s3Client", s3Client)
+		os.Exit(1)
+	}
+
 	if err = (&controllers.BucketReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		S3Client: s3Client,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
 	}
 	if err = (&controllers.PolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		S3Client: s3Client,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Policy")
-		os.Exit(1)
-	}
-	if err = (&controllers.PathReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Path")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
