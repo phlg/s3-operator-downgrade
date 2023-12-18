@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	s3onyxiashv1alpha1 "github.com/InseeFrLab/s3-operator/api/v1alpha1"
+	s3onyxiashv1alpha1 "github.com/phlg/s3-operator-downgrade/api/v1alpha1"
 )
 
 // PathReconciler reconciles a Path object
@@ -33,9 +33,9 @@ type PathReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=s3.onyxia.sh.onyxia.sh,resources=paths,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=s3.onyxia.sh.onyxia.sh,resources=paths/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=s3.onyxia.sh.onyxia.sh,resources=paths/finalizers,verbs=update
+//+kubebuilder:rbac:groups=s3.onyxia.sh,resources=paths,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=s3.onyxia.sh,resources=paths/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=s3.onyxia.sh,resources=paths/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

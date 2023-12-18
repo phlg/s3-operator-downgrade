@@ -2,9 +2,9 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/s3.onyxia.sh.onyxia.sh_buckets.yaml
-- bases/s3.onyxia.sh.onyxia.sh_policies.yaml
-- bases/s3.onyxia.sh.onyxia.sh_paths.yaml
+- bases/s3.onyxia.sh_buckets.yaml
+- bases/s3.onyxia.sh_policies.yaml
+- bases/s3.onyxia.sh_paths.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

@@ -1,4 +1,4 @@
-apiVersion: s3.onyxia.sh.onyxia.sh/v1alpha1
+apiVersion: s3.onyxia.sh/v1alpha1
 kind: Bucket
 metadata:
   labels:
