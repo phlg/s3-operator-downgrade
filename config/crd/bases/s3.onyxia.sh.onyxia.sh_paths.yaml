@@ -1,0 +1,56 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.11.1
+  creationTimestamp: null
+  name: paths.s3.onyxia.sh.onyxia.sh
+spec:
+  group: s3.onyxia.sh.onyxia.sh
+  names:
+    kind: Path
+    listKind: PathList
+    plural: paths
+    singular: path
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Path is the Schema for the paths API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PathSpec defines the desired state of Path
+            properties:
+              bucketName:
+                description: Name of the bucket
+                type: string
+              paths:
+                description: Paths (folders) to create inside the bucket
+                items:
+                  type: string
+                type: array
+            required:
+            - bucketName
+            type: object
+          status:
+            description: PathStatus defines the observed state of Path
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
